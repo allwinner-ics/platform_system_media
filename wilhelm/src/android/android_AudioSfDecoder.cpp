@@ -19,6 +19,7 @@
 #include "sles_allinclusive.h"
 #include "android/android_AudioSfDecoder.h"
 
+#include <binder/IServiceManager.h>
 #include <media/stagefright/foundation/ADebug.h>
 
 
@@ -264,8 +265,10 @@ void AudioSfDecoder::onPrepare() {
     int32_t sr;
     bool hasSampleRate = meta->findInt32(kKeySampleRate, &sr);
 
+    // first compute the duration
     off64_t size;
     int64_t durationUs;
+    int32_t durationMsec;
     if (dataSource->getSize(&size) == OK
             && meta->findInt64(kKeyDuration, &durationUs)) {
         if (durationUs != 0) {
@@ -274,11 +277,17 @@ void AudioSfDecoder::onPrepare() {
             mBitrate = -1;
         }
         mDurationUsec = durationUs;
-        mDurationMsec = durationUs / 1000;
+        durationMsec = durationUs / 1000;
     } else {
         mBitrate = -1;
         mDurationUsec = ANDROID_UNKNOWN_TIME;
-        mDurationMsec = ANDROID_UNKNOWN_TIME;
+        durationMsec = ANDROID_UNKNOWN_TIME;
+    }
+
+    // then assign the duration under the settings lock
+    {
+        Mutex::Autolock _l(mSettingsLock);
+        mDurationMsec = durationMsec;
     }
 
     // the audio content is not raw PCM, so we need a decoder
@@ -768,17 +777,25 @@ void AudioSfDecoder::hasNewDecodeParams() {
     updateAudioSink();
 }
 
-static const char* const kUnsupportedCodecs[] = { MEDIA_MIMETYPE_AUDIO_AMR_NB,
+static const char* const kPlaybackOnlyCodecs[] = { MEDIA_MIMETYPE_AUDIO_AMR_NB,
         MEDIA_MIMETYPE_AUDIO_AMR_WB };
-#define NB_UNSUPPORTED_CODECS (sizeof(kUnsupportedCodecs)/sizeof(kUnsupportedCodecs[0]))
+#define NB_PLAYBACK_ONLY_CODECS (sizeof(kPlaybackOnlyCodecs)/sizeof(kPlaybackOnlyCodecs[0]))
 
 bool AudioSfDecoder::isSupportedCodec(const char* mime) {
-    for (unsigned int i = 0 ; i < NB_UNSUPPORTED_CODECS ; i++) {
-        if (!strcasecmp(mime, kUnsupportedCodecs[i])) {
-            return false;
+    bool codecRequiresPermission = false;
+    for (unsigned int i = 0 ; i < NB_PLAYBACK_ONLY_CODECS ; i++) {
+        if (!strcasecmp(mime, kPlaybackOnlyCodecs[i])) {
+            codecRequiresPermission = true;
+            break;
         }
     }
-    return true;
+    if (codecRequiresPermission) {
+        // verify only the system can decode, for playback only
+        return checkCallingPermission(
+                String16("android.permission.ALLOW_ANY_CODEC_FOR_PLAYBACK"));
+    } else {
+        return true;
+    }
 }
 
 } // namespace android

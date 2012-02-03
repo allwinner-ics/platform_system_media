@@ -112,6 +112,16 @@ public class BackDropperFilter extends Filter {
     @GenerateFinalPort(name = "provideDebugOutputs", hasDefault = true)
     private boolean mProvideDebugOutputs = false;
 
+    // Whether to mirror the background or not. For ex, the Camera app
+    // would mirror the preview for the front camera
+    @GenerateFieldPort(name = "mirrorBg", hasDefault = true)
+    private boolean mMirrorBg = false;
+
+    // The orientation of the display. This will change the flipping
+    // coordinates, if we were to mirror the background
+    @GenerateFieldPort(name = "orientation", hasDefault = true)
+    private int mOrientation = 0;
+
     /** Default algorithm parameter values, for non-shader use */
 
     // Frame count for learning bg model
@@ -119,11 +129,11 @@ public class BackDropperFilter extends Filter {
     // Frame count for learning verification
     private static final int DEFAULT_LEARNING_VERIFY_DURATION = 10;
     // Maximum distance (in standard deviations) for considering a pixel as background
-    private static final float DEFAULT_ACCEPT_STDDEV = 1.1f;
+    private static final float DEFAULT_ACCEPT_STDDEV = 0.85f;
     // Variance threshold scale factor for large scale of hierarchy
-    private static final float DEFAULT_HIER_LRG_SCALE = 1.5f;
+    private static final float DEFAULT_HIER_LRG_SCALE = 0.7f;
     // Variance threshold scale factor for medium scale of hierarchy
-    private static final float DEFAULT_HIER_MID_SCALE = 1.0f;
+    private static final float DEFAULT_HIER_MID_SCALE = 0.6f;
     // Variance threshold scale factor for small scale of hierarchy
     private static final float DEFAULT_HIER_SML_SCALE = 0.5f;
     // Width of foreground / background mask.
@@ -137,9 +147,9 @@ public class BackDropperFilter extends Filter {
     // Area over which to average for small scale
     private static final int DEFAULT_HIER_SML_EXPONENT = 0;
     // Scale factor for luminance channel in distance calculations (larger = more significant)
-    private static final float DEFAULT_Y_SCALE_FACTOR = 0.45f;
+    private static final float DEFAULT_Y_SCALE_FACTOR = 0.40f;
     // Scale factor for chroma channels in distance calculations
-    private static final float DEFAULT_UV_SCALE_FACTOR = 1.25f;
+    private static final float DEFAULT_UV_SCALE_FACTOR = 1.35f;
     // Mask value to start blending away from background
     private static final float DEFAULT_MASK_BLEND_BG = 0.65f;
     // Mask value to start blending away from foreground
@@ -258,7 +268,8 @@ public class BackDropperFilter extends Filter {
             "uniform float subsample_level;\n" +
             "varying vec2 v_texcoord;\n" +
             "void main() {\n" +
-            "  vec4 fg = coeff_yuv * texture2D(tex_sampler_0, v_texcoord, subsample_level);\n" +
+            "  vec4 fg_rgb = texture2D(tex_sampler_0, v_texcoord, subsample_level);\n" +
+            "  vec4 fg = coeff_yuv * vec4(fg_rgb.rgb, 1.);\n" +
             "  vec4 mean = texture2D(tex_sampler_1, v_texcoord);\n" +
             "  vec4 variance = inv_var_scale * texture2D(tex_sampler_2, v_texcoord);\n" +
             "\n" +
@@ -394,7 +405,8 @@ public class BackDropperFilter extends Filter {
             "uniform float subsample_level;\n" +
             "varying vec2 v_texcoord;\n" +
             "void main() {\n" +
-            "  vec4 fg = coeff_yuv * texture2D(tex_sampler_0, v_texcoord, subsample_level);\n" +
+            "  vec4 fg_rgb = texture2D(tex_sampler_0, v_texcoord, subsample_level);\n" +
+            "  vec4 fg = coeff_yuv * vec4(fg_rgb.rgb, 1.);\n" +
             "  vec4 mean = texture2D(tex_sampler_1, v_texcoord);\n" +
             "  vec4 mask = texture2D(tex_sampler_2, v_texcoord, \n" +
             "                      " + MASK_SMOOTH_EXPONENT + ");\n" +
@@ -423,7 +435,8 @@ public class BackDropperFilter extends Filter {
             "uniform float subsample_level;\n" +
             "varying vec2 v_texcoord;\n" +
             "void main() {\n" +
-            "  vec4 fg = coeff_yuv * texture2D(tex_sampler_0, v_texcoord, subsample_level);\n" +
+            "  vec4 fg_rgb = texture2D(tex_sampler_0, v_texcoord, subsample_level);\n" +
+            "  vec4 fg = coeff_yuv * vec4(fg_rgb.rgb, 1.);\n" +
             "  vec4 mean = texture2D(tex_sampler_1, v_texcoord);\n" +
             "  vec4 variance = inv_var_scale * texture2D(tex_sampler_2, v_texcoord);\n" +
             "  vec4 mask = texture2D(tex_sampler_3, v_texcoord, \n" +
@@ -926,6 +939,29 @@ public class BackDropperFilter extends Filter {
                     }
                     break;
             }
+            // If mirroring is required (for ex. the camera mirrors the preview
+            // in the front camera)
+            // TODO: Backdropper does not attempt to apply any other transformation
+            // than just flipping. However, in the current state, it's "x-axis" is always aligned
+            // with the Camera's width. Hence, we need to define the mirroring based on the camera
+            // orientation. In the future, a cleaner design would be to cast away all the rotation
+            // in a separate place.
+            if (mMirrorBg) {
+                if (mLogVerbose) Log.v(TAG, "Mirroring the background!");
+                // Mirroring in portrait
+                if (mOrientation == 0 || mOrientation == 180) {
+                    xWidth = -xWidth;
+                    xMin = 1.0f - xMin;
+                } else {
+                    // Mirroring in landscape
+                    yWidth = -yWidth;
+                    yMin = 1.0f - yMin;
+                }
+            }
+            if (mLogVerbose) Log.v(TAG, "bgTransform: xMin, yMin, xWidth, yWidth : " +
+                    xMin + ", " + yMin + ", " + xWidth + ", " + yWidth +
+                    ", mRelAspRatio = " + mRelativeAspect);
+            // The following matrix is the transpose of the actual matrix
             float[] bgTransform = {xWidth, 0.f, 0.f,
                                    0.f, yWidth, 0.f,
                                    xMin, yMin,  1.f};

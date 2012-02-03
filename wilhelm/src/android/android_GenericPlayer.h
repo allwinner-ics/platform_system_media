@@ -77,7 +77,6 @@ public:
     virtual void getDurationMsec(int* msec); //msec != NULL, ANDROID_UNKNOWN_TIME if unknown
     virtual void getPositionMsec(int* msec) = 0; //msec != NULL, ANDROID_UNKNOWN_TIME if unknown
 
-    virtual void setVideoSurface(const sp<Surface> &surface) {}
     virtual void setVideoSurfaceTexture(const sp<ISurfaceTexture> &surfaceTexture) {}
 
     void setVolume(float leftVol, float rightVol);
@@ -88,7 +87,7 @@ public:
     void setPlayEvents(int32_t eventFlags, int32_t markerPosition, int32_t positionUpdatePeriod);
 
 protected:
-    // mutex used for set vs use of volume and cache (fill, threshold) settings
+    // mutex used for set vs use of volume, duration, and cache (fill, threshold) settings
     Mutex mSettingsLock;
 
     void resetDataLocator();
@@ -176,6 +175,8 @@ protected:
     AudioPlayback_Parameters mPlaybackParams;
 
     AndroidAudioLevels mAndroidAudioLevels;
+
+    // protected by mSettingsLock
     int32_t mDurationMsec;
 
     CacheStatus_t mCacheStatus;

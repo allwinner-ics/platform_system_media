@@ -32,7 +32,6 @@ class MediaPlayerNotificationClient : public BnMediaPlayerClient
 {
 public:
     MediaPlayerNotificationClient(GenericMediaPlayer* gmp);
-    virtual ~MediaPlayerNotificationClient();
 
     // IMediaPlayerClient implementation
     virtual void notify(int msg, int ext1, int ext2, const Parcel *obj);
@@ -44,6 +43,9 @@ public:
     // completed successfully, or false if it completed unsuccessfully
     bool blockUntilPlayerPrepared();
 
+protected:
+    virtual ~MediaPlayerNotificationClient();
+
 private:
     const wp<GenericMediaPlayer> mGenericMediaPlayer;
     Mutex mLock;                        // protects mPlayerPrepared
@@ -54,6 +56,24 @@ private:
         PREPARE_COMPLETED_SUCCESSFULLY,
         PREPARE_COMPLETED_UNSUCCESSFULLY
     } mPlayerPrepared;
+};
+
+
+class MediaPlayerDeathNotifier : public IMediaDeathNotifier {
+public:
+    MediaPlayerDeathNotifier(const sp<MediaPlayerNotificationClient> playerClient) :
+        mPlayerClient(playerClient) {
+    }
+
+    void died() {
+        mPlayerClient->notify(MEDIA_ERROR, MEDIA_ERROR_SERVER_DIED, 0, NULL);
+    }
+
+protected:
+    virtual ~MediaPlayerDeathNotifier() { }
+
+private:
+    const sp<MediaPlayerNotificationClient> mPlayerClient;
 };
 
 
@@ -70,7 +90,6 @@ public:
     // overridden from GenericPlayer
     virtual void getPositionMsec(int* msec); // ANDROID_UNKNOWN_TIME if unknown
 
-    virtual void setVideoSurface(const sp<Surface> &surface);
     virtual void setVideoSurfaceTexture(const sp<ISurfaceTexture> &surfaceTexture);
 
 protected:
@@ -91,14 +110,15 @@ protected:
     const bool mHasVideo;   // const allows MediaPlayerNotificationClient::notify to safely access
     int32_t mSeekTimeMsec;
 
-    // at most one of mVideoSurface and mVideoSurfaceTexture is non-NULL
-    sp<Surface> mVideoSurface;
     sp<ISurfaceTexture> mVideoSurfaceTexture;
 
     // only safe to access from within Realize and looper
     sp<IMediaPlayer> mPlayer;
     // Receives Android MediaPlayer events from mPlayer
     const sp<MediaPlayerNotificationClient> mPlayerClient;
+
+    // Receives notifications about death of media.player service
+    const sp<MediaPlayerDeathNotifier> mPlayerDeathNotifier;
 
     // Return a reference to the media player service, or LOGE and return NULL after retries fail
     static const sp<IMediaPlayerService> getMediaPlayerService() {

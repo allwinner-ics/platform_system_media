@@ -192,6 +192,7 @@ void GenericPlayer::setBufferingUpdateThreshold(int16_t thresholdPercent) {
 
 //--------------------------------------------------
 void GenericPlayer::getDurationMsec(int* msec) {
+    Mutex::Autolock _l(mSettingsLock);
     *msec = mDurationMsec;
 }
 
@@ -597,6 +598,12 @@ void GenericPlayer::updateOneShot(int positionMs)
             //LOGV("Does anyone really know what time it is?");
             return;
         }
+    }
+
+    // if we observe the player position going backwards, even without without a seek, then recover
+    if (mObservedPositionMs != ANDROID_UNKNOWN_TIME && positionMs < mObservedPositionMs) {
+        mDeliveredNewPosMs = ANDROID_UNKNOWN_TIME;
+        mObservedPositionMs = positionMs;
     }
 
     // delayUs is the expected delay between current position and marker;

@@ -839,7 +839,7 @@ static void sfplayer_handlePrefetchEvent(int event, int data1, int data2, void* 
         break;
 
       case android::GenericPlayer::kEventErrorAfterPrepare: {
-        SL_LOGI("kEventErrorAfterPrepare");
+        SL_LOGV("kEventErrorAfterPrepare");
 
         // assume no callback
         slPrefetchCallback callback = NULL;
@@ -847,12 +847,10 @@ static void sfplayer_handlePrefetchEvent(int event, int data1, int data2, void* 
 
         object_lock_exclusive(&ap->mObject);
         if (IsInterfaceInitialized(&ap->mObject, MPH_PREFETCHSTATUS)) {
-            SL_LOGI("inited");
             ap->mPrefetchStatus.mLevel = 0;
             ap->mPrefetchStatus.mStatus = SL_PREFETCHSTATUS_UNDERFLOW;
             if (!(~ap->mPrefetchStatus.mCallbackEventsMask &
                     (SL_PREFETCHEVENT_FILLLEVELCHANGE | SL_PREFETCHEVENT_STATUSCHANGE))) {
-                SL_LOGI("enabled");
                 callback = ap->mPrefetchStatus.mCallback;
                 callbackPContext = ap->mPrefetchStatus.mContext;
             }
@@ -863,7 +861,6 @@ static void sfplayer_handlePrefetchEvent(int event, int data1, int data2, void* 
         SL_LOGE("Error after prepare: %d", data1);
 
         // callback with no lock held
-        SL_LOGE("callback=%p context=%p", callback, callbackPContext);
         if (NULL != callback) {
             (*callback)(&ap->mPrefetchStatus.mItf, callbackPContext,
                     SL_PREFETCHEVENT_FILLLEVELCHANGE | SL_PREFETCHEVENT_STATUSCHANGE);
@@ -1058,20 +1055,20 @@ SLresult android_audioPlayer_checkSourceSink(CAudioPlayer *pAudioPlayer)
             SL_LOGD("source MIME is %s", (char*)df_mime->mimeType);
             switch(df_mime->containerType) {
             case SL_CONTAINERTYPE_MPEG_TS:
-                if (strcasecmp((char*)df_mime->mimeType, ANDROID_MIME_MP2TS)) {
+                if (strcasecmp((char*)df_mime->mimeType, (const char *)XA_ANDROID_MIME_MP2TS)) {
                     SL_LOGE("Invalid MIME (%s) for container SL_CONTAINERTYPE_MPEG_TS, expects %s",
-                            (char*)df_mime->mimeType, ANDROID_MIME_MP2TS);
+                            (char*)df_mime->mimeType, XA_ANDROID_MIME_MP2TS);
                     return SL_RESULT_CONTENT_UNSUPPORTED;
                 }
                 break;
             case SL_CONTAINERTYPE_RAW:
             case SL_CONTAINERTYPE_AAC:
-                if (strcasecmp((char*)df_mime->mimeType, ANDROID_MIME_AACADTS) &&
+                if (strcasecmp((char*)df_mime->mimeType, (const char *)SL_ANDROID_MIME_AACADTS) &&
                         strcasecmp((char*)df_mime->mimeType,
                                 ANDROID_MIME_AACADTS_ANDROID_FRAMEWORK)) {
                     SL_LOGE("Invalid MIME (%s) for container type %d, expects %s",
                             (char*)df_mime->mimeType, df_mime->containerType,
-                            ANDROID_MIME_AACADTS);
+                            SL_ANDROID_MIME_AACADTS);
                     return SL_RESULT_CONTENT_UNSUPPORTED;
                 }
                 break;
